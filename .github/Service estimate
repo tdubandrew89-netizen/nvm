@@ -1,0 +1,54 @@
+// pages/api/lead.js
+import sendgrid from "@sendgrid/mail";
+
+sendgrid.setApiKey(process.env.SENDGRID_API_KEY);
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).end();
+  const { name, email, phone, service, sqft, price } = req.body || {};
+
+  if (!name || !email || !phone) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  // 1) Send email to you
+  try {
+    const msg = {
+      to: process.env.RECIPIENT_EMAIL, // your inbox
+      from: process.env.SENDGRID_SENDER, // verified sender
+      subject: `New lead from estimator — ${name} (${service})`,
+      text: `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\nService: ${service}\nSqft: ${sqft}\nEstimated price: ${price}`,
+      html: `<p><strong>Name:</strong> ${name}</p>
+             <p><strong>Email:</strong> ${email}</p>
+             <p><strong>Phone:</strong> ${phone}</p>
+             <p><strong>Service:</strong> ${service}</p>
+             <p><strong>Sqft:</strong> ${sqft}</p>
+             <p><strong>Price:</strong> ${price}</p>`,
+    };
+    await sendgrid.send(msg);
+  } catch (err) {
+    console.error("SendGrid error:", err);
+    // don't fail here — continue to SMS or DB if desired
+  }
+
+  // 2) Optional: send SMS to you via Twilio
+  if (process.env.TWILIO_ACCOUNT_SID) {
+    try {
+      const twilio = require("twilio")(
+        process.env.TWILIO_ACCOUNT_SID,
+        process.env.TWILIO_AUTH_TOKEN
+      );
+      await twilio.messages.create({
+        body: `New lead: ${name} ${phone} ${service} $${price}`,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: process.env.MY_PHONE_NUMBER,
+      });
+    } catch (err) {
+      console.error("Twilio error:", err);
+    }
+  }
+
+  // 3) Optional: also POST to Zapier/Airtable/Supabase here (see notes below)
+
+  return res.status(200).json({ ok: true });
+}
